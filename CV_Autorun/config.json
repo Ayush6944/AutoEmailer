@@ -1,0 +1,23 @@
+{
+    "campaigns": {
+        "default": {
+            "name": "default",
+            "template": "default",
+            "batch_size": 50,
+            "delay": 20,
+            "test_mode": false
+        }
+    },
+    "email": {
+        "smtp_server": "smtp.gmail.com",
+        "smtp_port": 587,
+        "sender_email": "tour-email-id-here",
+        "sender_password": "your-app_password_here-after-2-factor-authentication",
+        "use_tls": true,
+        "batch_delay": 20,
+        "max_retries": 3
+    },
+    "attachments": {
+        "resume": "data/resume.pdf"
+    }
+} 
