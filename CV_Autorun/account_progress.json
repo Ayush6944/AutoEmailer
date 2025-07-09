@@ -1,0 +1,36 @@
+{
+  "last_reset_date": "2025-07-10",
+  "current_account_index": 0,
+  "accounts": {
+    "account_3": {
+      "emails_sent_today": 2,
+      "last_used": "2025-07-10T02:46:43.076449",
+      "last_campaign_date": "2025-07-10T02:46:43.076449",
+      "total_emails_sent": 2,
+      "failed_attempts": 0,
+      "last_error": null,
+      "status": "active",
+      "daily_limit_today": 400
+    },
+    "account_2": {
+      "emails_sent_today": 2,
+      "last_used": "2025-07-10T02:47:10.439141",
+      "last_campaign_date": "2025-07-10T02:47:10.439141",
+      "total_emails_sent": 2,
+      "failed_attempts": 0,
+      "last_error": null,
+      "status": "active",
+      "daily_limit_today": 409
+    },
+    "account_1": {
+      "emails_sent_today": 2,
+      "last_used": "2025-07-10T02:47:38.883007",
+      "last_campaign_date": "2025-07-10T02:47:38.883007",
+      "total_emails_sent": 2,
+      "failed_attempts": 0,
+      "last_error": null,
+      "status": "active",
+      "daily_limit_today": 420
+    }
+  }
+}

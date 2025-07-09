@@ -12,6 +12,7 @@ import signal
 import sys
 from typing import Dict, Any
 import sqlite3
+from account_manager import AccountManager
 
 # Set up logging
 logging.basicConfig(
@@ -35,15 +36,27 @@ def load_config() -> Dict[str, Any]:
             config = json.load(f)
             
         # Validate required email settings
-        if 'email' not in config:
-            raise ValueError("Missing 'email' section in configuration")
+        if 'email_accounts' not in config:
+            raise ValueError("Missing 'email_accounts' section in configuration")
             
-        email_config = config['email']
-        required_fields = ['smtp_server', 'smtp_port', 'sender_email', 'sender_password']
-        missing_fields = [field for field in required_fields if field not in email_config]
+        email_accounts = config['email_accounts']
         
-        if missing_fields:
-            raise ValueError(f"Missing required email configuration fields: {', '.join(missing_fields)}")
+        # Check if email_accounts is a list
+        if not isinstance(email_accounts, list):
+            raise ValueError("'email_accounts' must be a list of account configurations")
+        
+        if not email_accounts:
+            raise ValueError("'email_accounts' list cannot be empty")
+        
+        # Validate each account in the list
+        required_fields = ['smtp_server', 'smtp_port', 'sender_email', 'sender_password']
+        for i, account in enumerate(email_accounts):
+            if not isinstance(account, dict):
+                raise ValueError(f"Account {i+1} in 'email_accounts' must be a dictionary")
+            
+            missing_fields = [field for field in required_fields if field not in account]
+            if missing_fields:
+                raise ValueError(f"Account {i+1} missing required fields: {', '.join(missing_fields)}")
             
         return config
     except Exception as e:
@@ -86,7 +99,8 @@ def run_campaign(resume_path: str, batch_size: int = 50, daily_limit: int = 500,
         data_manager = DataManager()
         email_tracker = EmailTracker()  # Initialize email tracker
         config = load_config()
-        email_engine = EmailEngine(config['email'])
+        account_manager = AccountManager()
+        email_engine = EmailEngine(account_manager)
         template_manager = TemplateManager()
         
         # Verify resume exists
@@ -98,10 +112,30 @@ def run_campaign(resume_path: str, batch_size: int = 50, daily_limit: int = 500,
         # Add resume to template attachments
         template['attachments'] = [resume_path]
         
+        # Show account statistics
+        stats = account_manager.get_account_stats()
+        logger.info(f"Account Statistics:")
+        logger.info(f"  Total Accounts: {stats['total_accounts']}")
+        logger.info(f"  Active Accounts: {stats['active_accounts']}")
+        logger.info(f"  Total Daily Capacity: {account_manager.get_total_daily_capacity()}")
+        logger.info(f"  Remaining Daily Capacity: {account_manager.get_remaining_daily_capacity()}")
+        logger.info(f"  Emails Sent Today: {stats['total_sent_today']}")
+        
+        # Show individual account status
+        for account in stats['accounts']:
+            logger.info(f"  Account {account['id']}: {account['emails_sent_today']}/{account['daily_limit']} ({account['status']})")
+        
         # Get companies to process
-        companies = data_manager.get_unsent_companies(limit=daily_limit)
+        remaining_capacity = account_manager.get_remaining_daily_capacity()
+        effective_daily_limit = min(daily_limit, remaining_capacity)
+        
+        if effective_daily_limit <= 0:
+            logger.warning("No remaining email capacity for today. All accounts have reached their daily limits.")
+            return
+        
+        companies = data_manager.get_unsent_companies(limit=effective_daily_limit)
         total_companies = len(companies)
-        logger.info(f"Starting campaign for {total_companies} companies")
+        logger.info(f"Starting campaign for {total_companies} companies (effective daily limit: {effective_daily_limit})")
         
         # Load progress
         last_processed_id = load_progress()
@@ -128,18 +162,18 @@ def run_campaign(resume_path: str, batch_size: int = 50, daily_limit: int = 500,
                             company_name=company['company_name'],
                             hr_email=company['hr_email'],
                             hr_name="HR Manager",
-                            position=company.get('position', 'Software Engineer')
+                            position="Software Developer"
                         )
                         
                         # Add to batch
                         emails.append({
                             'to_email': company['hr_email'],
-                            'subject': f"Application for {company.get('position', 'Software Engineer')} at {company['company_name']}",
+                            'subject': f"Application for Software Engineer | Developer at {company['company_name']}",
                             'content': email_body,
                             'company_id': company['id'],
                             'company_name': company['company_name'],
                             'hr_email': company['hr_email'],
-                            'position': company.get('position', 'Software Engineer')
+                            'position': 'Software Engineer'
                         })
                         
                     except Exception as e:
@@ -159,6 +193,7 @@ def run_campaign(resume_path: str, batch_size: int = 50, daily_limit: int = 500,
                         company_id = result['company_id']
                         success = result['success']
                         error = result.get('error')
+                        account_id = result.get('account_id', 'unknown')
                         
                         # Update companies.db
                         data_manager.mark_email_sent(
@@ -178,12 +213,21 @@ def run_campaign(resume_path: str, batch_size: int = 50, daily_limit: int = 500,
                         save_progress(company_id)
                         processed_count += 1
                         
-                        # Log progress
-                        logger.info(f"Progress: {processed_count}/{total_companies} companies processed")
+                        # Log progress with account info
+                        if success:
+                            logger.info(f"Progress: {processed_count}/{total_companies} companies processed | Account: {account_id}")
+                        else:
+                            logger.warning(f"Failed to send to company {company_id} using account {account_id}: {error}")
+                        
+                        # Show updated account statistics every 10 emails
+                        if processed_count % 10 == 0:
+                            remaining_capacity = account_manager.get_remaining_daily_capacity()
+                            logger.info(f"Remaining daily capacity: {remaining_capacity} emails")
                 
                 # Add delay between batches
                 if i + batch_size < len(companies):
-                    time.sleep(email_engine.batch_delay)
+                    # Use a default batch delay since we're now using account-specific delays
+                    time.sleep(30)
                     
             except KeyboardInterrupt:
                 logger.info("\nCampaign interrupted by user. Cleaning up current batch...")

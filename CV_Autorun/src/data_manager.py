@@ -166,7 +166,7 @@ class DataManager:
             with sqlite3.connect(self.companies_db) as conn:
                 cursor = conn.cursor()
                 query = """
-                    SELECT id, company_name, hr_email, position
+                    SELECT id, company_name, hr_email
                     FROM companies
                     WHERE sent_timestamp IS NULL
                     ORDER BY id
@@ -180,7 +180,7 @@ class DataManager:
                         'id': row[0],
                         'company_name': row[1],
                         'hr_email': row[2],
-                        'position': row[3] or 'Software Engineer'  # Default position if None
+                        'position':  'Software Engineer'  # Default position if None
                     })
                 return companies
         except Exception as e:

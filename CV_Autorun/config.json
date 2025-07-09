@@ -8,16 +8,53 @@
             "test_mode": false
         }
     },
-    "email": {
-        "smtp_server": "smtp.gmail.com",
-        "smtp_port": 587,
-        "sender_email": "tour-email-id-here",
-        "sender_password": "your-app_password_here-after-2-factor-authentication",
-        "use_tls": true,
-        "batch_delay": 20,
-        "max_retries": 3
+    "email_accounts": [
+        {
+            "id": "account_3",
+            "smtp_server": "smtp.gmail.com",
+            "smtp_port": 587,
+            "sender_email": "ayushsrivastava.dev402@gmail.com",
+            "sender_password": "bjewjrkpcuuifebt",
+            "use_tls": true,
+            "daily_limit_range": [400, 450],
+            "batch_delay": 20,
+            "max_retries": 2,
+            "enabled": true
+        },
+        {
+            "id": "account_2",
+            "smtp_server": "smtp.gmail.com",
+            "smtp_port": 587,
+            "sender_email": "ayushsrivastava.sde@gmail.com",
+            "sender_password": "cxwkndikwmwsqtnv",
+            "use_tls": true,
+            "daily_limit_range": [400, 450],
+            "batch_delay": 20,
+            "max_retries": 2,
+            "enabled": true
+        },
+        {
+            "id": "account_1",
+            "smtp_server": "smtp.gmail.com",
+            "smtp_port": 587,
+            "sender_email": "faltuwali01@gmail.com",
+            "sender_password": "slbwpcxcgsnlhucq",
+            "use_tls": true,
+            "daily_limit_range": [400, 450],
+            "batch_delay": 20,
+            "max_retries": 2,
+            "enabled": true
+        }
+    ],
+    "email_rotation": {
+        "strategy": "round_robin",
+        "cooldown_minutes": 60,
+        "account_cooldown_hours": 24,
+        "max_accounts": 10,
+        "reset_daily_counters_at": "00:00",
+        "server_mode": true
     },
     "attachments": {
-        "resume": "data/resume.pdf"
+        "resume": "data/Ayush.pdf"
     }
-} 
+}

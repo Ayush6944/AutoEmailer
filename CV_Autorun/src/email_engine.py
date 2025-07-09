@@ -20,29 +20,27 @@ logger = logging.getLogger(__name__)
 class EmailEngine:
     """Handles email sending with SMTP, rate limiting, and error handling"""
     
-    def __init__(self, config: Dict[str, Any]):
-        """Initialize email engine with SMTP configuration"""
-        self.smtp_server = config.get('smtp_server', 'smtp.gmail.com')
-        self.smtp_port = config.get('smtp_port', 587)
-        self.sender_email = config.get('sender_email', '')
-        self.sender_password = config.get('sender_password', '')
-        self.use_tls = config.get('use_tls', True)
+    def __init__(self, account_manager=None):
+        """Initialize email engine with account manager"""
+        from account_manager import AccountManager
         
-        # Rate limiting settings
-        self.batch_delay = config.get('batch_delay', 60)
-        self.max_retries = config.get('max_retries', 3)
+        self.account_manager = account_manager or AccountManager()
+        self.current_account = None
         
-        if not self.sender_email or not self.sender_password:
-            raise ValueError("Email credentials not configured")
-            
-        logger.info(f"Email engine initialized with SMTP server: {self.smtp_server}:{self.smtp_port}")
+        logger.info(f"Email engine initialized with {len(self.account_manager.accounts)} accounts")
+        logger.info(f"Total daily capacity: {self.account_manager.get_total_daily_capacity()} emails")
     
-    def _send_email(self, to_email: str, subject: str, content: str, is_html: bool = False, attachments: Optional[List[str]] = None):
-        """Send a single email with optional attachments."""
+    def _send_email(self, to_email: str, subject: str, content: str, is_html: bool = False, attachments: Optional[List[str]] = None, account: Dict[str, Any] = None):
+        """Send a single email with optional attachments using specified account."""
+        if not account:
+            account = self.account_manager.get_available_account()
+            if not account:
+                raise Exception("No available email accounts")
+        
         try:
             # Create message
             msg = MIMEMultipart()
-            msg['From'] = self.sender_email
+            msg['From'] = account['sender_email']
             msg['To'] = to_email
             msg['Subject'] = subject
             
@@ -64,28 +62,39 @@ class EmailEngine:
                     else:
                         logger.warning(f"Attachment not found: {attachment_path}")
             
-            # Send email
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                if self.use_tls:
+            # Send email using account credentials
+            with smtplib.SMTP(account.get('smtp_server', 'smtp.gmail.com'), account.get('smtp_port', 587)) as server:
+                if account.get('use_tls', True):
                     server.starttls()
-                server.login(self.sender_email, self.sender_password)
+                server.login(account['sender_email'], account['sender_password'])
                 server.send_message(msg)
                 
-            logger.info(f"Email sent successfully to {to_email}")
-            return True
+            logger.info(f"Email sent successfully to {to_email} using account {account['id']}")
+            
+            # Mark email as sent in account manager
+            self.account_manager.mark_email_sent(account['id'], success=True)
+            
+            return True, account['id']
             
         except Exception as e:
-            logger.error(f"Error sending email to {to_email}: {str(e)}")
+            logger.error(f"Error sending email to {to_email} using account {account['id']}: {str(e)}")
+            # Mark email as failed in account manager
+            self.account_manager.mark_email_sent(account['id'], success=False, error_message=str(e))
             raise
     
     def send_batch(self, emails: List[Dict[str, str]], template: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Send a batch of emails using the provided template."""
+        """Send a batch of emails using the provided template with account rotation."""
         results = []
         
         for email_data in emails:
+            account_id = None
             try:
-                # Add random delay between emails
-                time.sleep(self.batch_delay + random.uniform(1, 5))
+                # Get available account for this email
+                account = self.account_manager.get_available_account()
+                if not account:
+                    raise Exception("No available email accounts")
+                
+                account_id = account['id']
                 
                 # Format email content using template manager
                 from template_manager import TemplateManager
@@ -106,21 +115,29 @@ class EmailEngine:
                 
                 # Send email with retries
                 success = False
-                for attempt in range(self.max_retries):
+                used_account_id = None
+                
+                for attempt in range(account.get('max_retries', 3)):
                     try:
-                        self._send_email(
+                        # Get fresh account for each retry if needed
+                        if attempt > 0:
+                            account = self.account_manager.get_available_account()
+                            if not account:
+                                raise Exception("No available email accounts for retry")
+                        
+                        success, used_account_id = self._send_email(
                             to_email=email_data['hr_email'],
                             subject=subject,
                             content=content,
                             is_html=template.get('is_html', True),
-                            attachments=template.get('attachments', [])
+                            attachments=template.get('attachments', []),
+                            account=account
                         )
-                        success = True
                         break
                     except Exception as e:
-                        if attempt < self.max_retries - 1:
+                        if attempt < account.get('max_retries', 3) - 1:
                             wait_time = (2 ** attempt) + random.uniform(1, 5)
-                            logger.warning(f"Retry {attempt + 1}/{self.max_retries} after {wait_time:.1f}s: {str(e)}")
+                            logger.warning(f"Retry {attempt + 1}/{account.get('max_retries', 3)} after {wait_time:.1f}s: {str(e)}")
                             time.sleep(wait_time)
                         else:
                             raise
@@ -130,8 +147,14 @@ class EmailEngine:
                     'company_name': email_data['company_name'],
                     'hr_email': email_data['hr_email'],
                     'success': success,
-                    'error': None
+                    'error': None,
+                    'account_id': used_account_id
                 })
+                
+                # Add delay between emails based on account settings
+                if account:
+                    batch_delay = account.get('batch_delay', 20)
+                    time.sleep(batch_delay + random.uniform(1, 5))
                 
             except Exception as e:
                 logger.error(f"Failed to send email to {email_data['hr_email']}: {str(e)}")
@@ -140,7 +163,8 @@ class EmailEngine:
                     'company_name': email_data['company_name'],
                     'hr_email': email_data['hr_email'],
                     'success': False,
-                    'error': str(e)
+                    'error': str(e),
+                    'account_id': account_id
                 })
         
         return results
